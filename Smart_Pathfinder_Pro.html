@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Smart Pathfinder Pro</title>
+<style>
+body{margin:0;overflow:hidden;background:#0f172a;font-family:Arial}
+canvas{display:block}
+#ui{position:absolute;top:15px;left:15px;background:rgba(15,23,42,.9);color:#fff;padding:14px;border-radius:12px;width:280px}
+input{width:100%}
+button{width:100%;margin-top:8px;padding:8px}
+</style>
+</head>
+<body>
+<div id="ui">
+<h3>Smart Pathfinder Pro</h3>
+<label>Hinder: <span id="cval">25</span></label>
+<input id="count" type="range" min="5" max="80" value="25">
+<button id="regen">Generera</button>
+<p>Klicka på kartan för målpunkt.</p>
+</div>
+<canvas id="cv"></canvas>
+<script>
+const cv=document.getElementById("cv"),ctx=cv.getContext("2d");
+const count=document.getElementById("count");
+const cval=document.getElementById("cval");
+let obs=[],goal={x:900,y:500},bot={x:80,y:80},path=[];
+const grid=10;
+
+function resize(){cv.width=innerWidth;cv.height=innerHeight;}
+addEventListener("resize",resize);resize();
+
+function makeObs(){
+ obs=[];
+ for(let i=0;i<+count.value;i++){
+  obs.push({x:Math.random()*(cv.width-120)+60,y:Math.random()*(cv.height-120)+60,s:50+Math.random()*40});
+ }
+ find();
+}
+count.oninput=()=>{cval.textContent=count.value;makeObs();};
+document.getElementById("regen").onclick=makeObs;
+
+function blocked(x,y){
+ if(x<0||y<0||x>cv.width||y>cv.height) return true;
+ for(const o of obs){
+  if(x>o.x-15&&x<o.x+o.s+15&&y>o.y-15&&y<o.y+o.s+15) return true;
+ }
+ return false;
+}
+
+function h(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
+
+function lineClear(a,b){
+ let d=h(a,b),steps=Math.ceil(d/4);
+ for(let i=0;i<=steps;i++){
+  let t=i/steps;
+  let x=a.x+(b.x-a.x)*t;
+  let y=a.y+(b.y-a.y)*t;
+  if(blocked(x,y)) return false;
+ }
+ return true;
+}
+
+function smooth(p){
+ if(p.length<3)return p;
+ let out=[p[0]],cur=0;
+ while(cur<p.length-1){
+  let f=cur+1;
+  for(let i=p.length-1;i>cur;i--){
+   if(lineClear(p[cur],p[i])){f=i;break;}
+  }
+  out.push(p[f]);
+  cur=f;
+ }
+ return out;
+}
+
+function find(){
+ const start={x:Math.round(bot.x/grid)*grid,y:Math.round(bot.y/grid)*grid};
+ let open=[start],came=new Map(),g=new Map(),f=new Map();
+ let sk=`${start.x},${start.y}`;
+ g.set(sk,0); f.set(sk,h(start,goal));
+
+ while(open.length){
+  let best=0;
+  for(let i=1;i<open.length;i++){
+   let a=f.get(`${open[i].x},${open[i].y}`)||1e9;
+   let b=f.get(`${open[best].x},${open[best].y}`)||1e9;
+   if(a<b) best=i;
+  }
+
+  let cur=open.splice(best,1)[0];
+
+  if(h(cur,goal)<15){
+   let p=[cur],k=`${cur.x},${cur.y}`;
+   while(came.has(k)){
+    cur=came.get(k);
+    k=`${cur.x},${cur.y}`;
+    p.unshift(cur);
+   }
+   path=smooth(p);
+   return;
+  }
+
+  const dirs=[[1,0,1],[-1,0,1],[0,1,1],[0,-1,1],[1,1,1.414],[1,-1,1.414],[-1,1,1.414],[-1,-1,1.414]];
+
+  for(const [dx,dy,cost] of dirs){
+   let n={x:cur.x+dx*grid,y:cur.y+dy*grid};
+   if(blocked(n.x,n.y)) continue;
+
+   let ck=`${cur.x},${cur.y}`;
+   let nk=`${n.x},${n.y}`;
+   let tg=(g.get(ck)||0)+cost*grid;
+
+   if(tg<(g.get(nk)??Infinity)){
+    came.set(nk,cur);
+    g.set(nk,tg);
+    f.set(nk,tg+h(n,goal));
+    if(!open.some(v=>v.x===n.x&&v.y===n.y)) open.push(n);
+   }
+  }
+ }
+ path=[];
+}
+
+cv.onclick=e=>{
+ goal={x:e.clientX,y:e.clientY};
+ find();
+};
+
+function move(){
+ if(path.length>1){
+  let t=path[1];
+  let dx=t.x-bot.x,dy=t.y-bot.y;
+  let d=Math.hypot(dx,dy);
+  if(d<4) path.shift();
+  else{
+   bot.x+=dx/d*3;
+   bot.y+=dy/d*3;
+  }
+ }
+}
+
+function draw(){
+ ctx.clearRect(0,0,cv.width,cv.height);
+
+ for(const o of obs){
+  ctx.fillStyle="rgba(255,0,0,.1)";
+  ctx.fillRect(o.x-15,o.y-15,o.s+30,o.s+30);
+  ctx.fillStyle="#ef4444";
+  ctx.fillRect(o.x,o.y,o.s,o.s);
+ }
+
+ if(path.length){
+  ctx.beginPath();
+  ctx.strokeStyle="#10b981";
+  ctx.lineWidth=4;
+  ctx.moveTo(path[0].x,path[0].y);
+  for(const p of path) ctx.lineTo(p.x,p.y);
+  ctx.stroke();
+ }
+
+ ctx.fillStyle="#fbbf24";
+ ctx.beginPath();
+ ctx.arc(goal.x,goal.y,10,0,Math.PI*2);
+ ctx.fill();
+
+ ctx.fillStyle="#3b82f6";
+ ctx.beginPath();
+ ctx.arc(bot.x,bot.y,12,0,Math.PI*2);
+ ctx.fill();
+}
+
+function loop(){
+ move();
+ draw();
+ requestAnimationFrame(loop);
+}
+makeObs();
+loop();
+</script>
+</body>
+</html>
