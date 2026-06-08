@@ -76,43 +76,58 @@ function smooth(p){
  return out;
 }
 
+const precision=10;
+const directions=Array.from({length:24},(_,i)=>{
+ const a=i*Math.PI/12;
+ return {dx:Math.cos(a),dy:Math.sin(a)};
+});
+
+function snap(p){
+ return {x:Math.round(p.x*precision)/precision,y:Math.round(p.y*precision)/precision};
+}
+
+function key(p){
+ return `${p.x},${p.y}`;
+}
+
 function find(){
- const start={x:Math.round(bot.x/grid)*grid,y:Math.round(bot.y/grid)*grid};
- let open=[start],came=new Map(),g=new Map(),f=new Map();
- let sk=`${start.x},${start.y}`;
+ const start=snap({x:Math.round(bot.x/grid)*grid,y:Math.round(bot.y/grid)*grid});
+ let open=[start],came=new Map(),g=new Map(),f=new Map(),closed=new Set();
+ let sk=key(start);
  g.set(sk,0); f.set(sk,h(start,goal));
 
  while(open.length){
   let best=0;
   for(let i=1;i<open.length;i++){
-   let a=f.get(`${open[i].x},${open[i].y}`)||1e9;
-   let b=f.get(`${open[best].x},${open[best].y}`)||1e9;
+   let a=f.get(key(open[i]))||1e9;
+   let b=f.get(key(open[best]))||1e9;
    if(a<b) best=i;
   }
 
   let cur=open.splice(best,1)[0];
+  let ck=key(cur);
+  if(closed.has(ck)) continue;
+  closed.add(ck);
 
-  if(h(cur,goal)<15){
-   let p=[cur],k=`${cur.x},${cur.y}`;
+  if(lineClear(cur,goal)){
+   let p=[cur],k=ck;
    while(came.has(k)){
     cur=came.get(k);
-    k=`${cur.x},${cur.y}`;
+    k=key(cur);
     p.unshift(cur);
    }
-   path=smooth(p);
+   path=smooth([...p,goal]);
    return;
   }
 
-  const dirs=[[1,0,1],[-1,0,1],[0,1,1],[0,-1,1],[1,1,1.414],[1,-1,1.414],[-1,1,1.414],[-1,-1,1.414]];
-
-  for(const [dx,dy,cost] of dirs){
-   let n={x:cur.x+dx*grid,y:cur.y+dy*grid};
+  for(const {dx,dy} of directions){
+   let n=snap({x:cur.x+dx*grid,y:cur.y+dy*grid});
+   let nk=key(n);
+   if(closed.has(nk)) continue;
    if(blocked(n.x,n.y)) continue;
+   if(!lineClear(cur,n)) continue;
 
-   let ck=`${cur.x},${cur.y}`;
-   let nk=`${n.x},${n.y}`;
-   let tg=(g.get(ck)||0)+cost*grid;
-
+   let tg=(g.get(ck)||0)+h(cur,n);
    if(tg<(g.get(nk)??Infinity)){
     came.set(nk,cur);
     g.set(nk,tg);
